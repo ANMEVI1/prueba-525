@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BackupStatus;
+use App\Models\DemoBackup;
 use App\Models\User;
 use App\Services\BackupScheduleManager;
 use App\Services\EnvironmentDetector;
@@ -232,5 +234,45 @@ class BackupAutomationTest extends TestCase
         $response->assertSee('Examinar...');
         $response->assertSee('Rutas rápidas:');
         $response->assertSee('storage/app/backups');
+    }
+
+    public function test_authenticated_user_can_query_restore_preflight_endpoint(): void
+    {
+        $user = User::factory()->create();
+        $backup = DemoBackup::factory()->create([
+            'database_name' => 'iesp_continuidad_demo',
+            'status' => BackupStatus::Success,
+        ]);
+
+        $response = $this->actingAs($user)->getJson(route('backups.preflight', $backup));
+
+        $response->assertOk();
+        $response->assertJsonStructure([
+            'success',
+            'backup_id',
+            'database',
+            'is_available',
+            'stack',
+            'flavor',
+            'version',
+            'label',
+            'exists',
+            'table_count',
+            'backup_size',
+            'backup_date',
+        ]);
+        $this->assertSame('iesp_continuidad_demo', $response->json('database'));
+    }
+
+    public function test_guest_cannot_query_restore_preflight_endpoint(): void
+    {
+        $backup = DemoBackup::factory()->create([
+            'database_name' => 'iesp_continuidad_demo',
+            'status' => BackupStatus::Success,
+        ]);
+
+        $response = $this->getJson(route('backups.preflight', $backup));
+
+        $response->assertUnauthorized();
     }
 }

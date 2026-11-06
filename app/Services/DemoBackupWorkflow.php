@@ -25,6 +25,8 @@ class DemoBackupWorkflow
         private readonly ?AuditLogger $auditLogger = null,
         private readonly ?MySqlDumper $mySqlDumper = null,
         private readonly ?EnvironmentDetector $detector = null,
+        private readonly ?DatabaseServerInspector $serverInspector = null,
+        private readonly ?SqlScriptProcessor $sqlProcessor = null,
     ) {}
 
     public function createBackup(?string $database = null, bool $isAutomated = false): DemoBackup
@@ -117,27 +119,35 @@ class DemoBackupWorkflow
                 $fileBase = rtrim($physicalDir, '\\/').DIRECTORY_SEPARATOR."{$uuid}.{$safeDb}";
 
                 if ($saveFormat === 'encrypted' || $saveFormat === 'both') {
-                    @file_put_contents("{$fileBase}.backup.enc", $encryptedContents);
-                    @file_put_contents("{$fileBase}.backup.enc.sha256", hash('sha256', $encryptedContents)."  {$uuid}.{$safeDb}.backup.enc\n");
+                    file_put_contents("{$fileBase}.backup.enc", $encryptedContents);
+                    file_put_contents("{$fileBase}.backup.enc.sha256", hash('sha256', $encryptedContents)."  {$uuid}.{$safeDb}.backup.enc\n");
                 }
 
                 if ($saveFormat === 'direct_sql' || $saveFormat === 'both') {
-                    @file_put_contents("{$fileBase}.dump.sql", $sourceContents);
-                    @file_put_contents("{$fileBase}.dump.sql.sha256", hash('sha256', $sourceContents)."  {$uuid}.{$safeDb}.dump.sql\n");
+                    file_put_contents("{$fileBase}.dump.sql", $sourceContents);
+                    file_put_contents("{$fileBase}.dump.sql.sha256", hash('sha256', $sourceContents)."  {$uuid}.{$safeDb}.dump.sql\n");
                 }
             }
 
-            // Guardar físicamente la copia espejo en storage/app/backups/secondary
+            // Guardar físicamente la copia espejo en el almacenamiento secundario configurado
             $replicateSecondary = (bool) ($scheduleConfig['replicate_secondary'] ?? true);
+            $secondaryWritten = false;
+            $configuredSecondary = $scheduleConfig['secondary_path'] ?? 'backups/secondary';
+
             if ($replicateSecondary) {
-                $secondaryPhysicalDir = storage_path('app/backups/secondary');
+                $secondaryPhysicalDir = $this->resolvePhysicalDestination($configuredSecondary);
                 if (! is_dir($secondaryPhysicalDir)) {
                     @mkdir($secondaryPhysicalDir, 0755, true);
                 }
                 if (is_dir($secondaryPhysicalDir)) {
                     $secFileBase = rtrim($secondaryPhysicalDir, '\\/').DIRECTORY_SEPARATOR."{$uuid}.{$safeDb}";
-                    @file_put_contents("{$secFileBase}.backup.enc", $encryptedContents);
-                    @file_put_contents("{$secFileBase}.backup.enc.sha256", hash('sha256', $encryptedContents)."  {$uuid}.{$safeDb}.backup.enc\n");
+                    $encWritten = file_put_contents("{$secFileBase}.backup.enc", $encryptedContents);
+                    file_put_contents("{$secFileBase}.backup.enc.sha256", hash('sha256', $encryptedContents)."  {$uuid}.{$safeDb}.backup.enc\n");
+
+                    if ($encWritten !== false && file_exists("{$secFileBase}.backup.enc")) {
+                        $secondarySha = hash_file('sha256', "{$secFileBase}.backup.enc");
+                        $secondaryWritten = hash_equals(hash('sha256', $encryptedContents), $secondarySha);
+                    }
                 }
             }
 
@@ -159,9 +169,15 @@ class DemoBackupWorkflow
             }
 
             // Secondary Replication (Mirror Copy & SHA-256 Manifest)
-            $secondaryPath = self::SECONDARY_DIRECTORY."/{$uuid}.{$safeDb}.backup.enc";
-            $disk->put($secondaryPath, $encryptedContents);
-            $disk->put($secondaryPath.'.sha256', $artifactSha256."  {$uuid}.{$safeDb}.backup.enc\n");
+            $isReplicated = false;
+            if ($replicateSecondary) {
+                $secondaryPath = self::SECONDARY_DIRECTORY."/{$uuid}.{$safeDb}.backup.enc";
+                $disk->put($secondaryPath, $encryptedContents);
+                $disk->put($secondaryPath.'.sha256', $artifactSha256."  {$uuid}.{$safeDb}.backup.enc\n");
+                $isReplicated = $disk->exists($secondaryPath) && hash_equals($artifactSha256, hash('sha256', (string) $disk->get($secondaryPath)));
+            } else {
+                $secondaryPath = null;
+            }
 
             $backup->update([
                 'status' => BackupStatus::Success,
@@ -170,7 +186,7 @@ class DemoBackupWorkflow
                 'artifact_path' => $artifactPath,
                 'artifact_sha256' => $artifactSha256,
                 'secondary_path' => $secondaryPath,
-                'replicated' => true,
+                'replicated' => $isReplicated,
                 'is_automated' => $isAutomated,
                 'source_sha256' => $sourceSha256,
                 'size_bytes' => strlen($encryptedContents),
@@ -322,7 +338,21 @@ class DemoBackupWorkflow
 
             // Re-inyección real en MySQL para restauración efectiva de la base de datos
             if (! app()->runningUnitTests()) {
-                $this->injectSqlIntoMySql($backup->database_name, $sourceContents);
+                try {
+                    $this->injectSqlIntoMySql($backup->database_name, $sourceContents);
+                } catch (Throwable $e) {
+                    if ($disk->exists($restoredPath)) {
+                        $disk->delete($restoredPath);
+                    }
+                    $this->logAudit(
+                        AuditAction::RestoreRejected,
+                        "Fallo en restauración de base de datos [{$backup->database_name}]: {$e->getMessage()}",
+                        $backup,
+                        ['error' => $e->getMessage()]
+                    );
+
+                    throw $e;
+                }
             }
         }
 
@@ -351,23 +381,45 @@ class DemoBackupWorkflow
 
     private function injectSqlIntoMySql(?string $targetDb, string $sql): void
     {
+        $inspector = $this->serverInspector ?? app(DatabaseServerInspector::class);
+        $processor = $this->sqlProcessor ?? app(SqlScriptProcessor::class);
+
+        $profile = $inspector->profile();
+        if (! $profile['available']) {
+            throw new RuntimeException('No se pudo conectar al servidor MySQL/MariaDB para ejecutar la restauración.');
+        }
+
+        $flavor = $profile['flavor'];
+        $dbName = $targetDb ?: config('database.connections.mysql.database', 'iesp_continuidad_demo');
+
         try {
-            $dbName = $targetDb ?: config('database.connections.mysql.database', 'iesp_continuidad_demo');
-            $host = config('database.connections.mysql.host', '127.0.0.1');
-            $port = config('database.connections.mysql.port', '3306');
-            $username = config('database.connections.mysql.username', 'root');
-            $password = config('database.connections.mysql.password', '');
-
-            $pdo = new PDO("mysql:host={$host};port={$port};charset=utf8mb4", $username, $password, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4',
-            ]);
-
+            $pdo = $inspector->connection();
             $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
             $pdo->exec("USE `{$dbName}`;");
-            $pdo->exec($sql);
+            $pdo->exec('SET foreign_key_checks = 0;');
+            $pdo->exec("SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO';");
+
+            $statements = $processor->split($sql);
+            foreach ($statements as $statement) {
+                $adapted = $processor->adaptForServer($statement, $flavor);
+                if ($adapted !== null) {
+                    $pdo->exec($adapted);
+                }
+            }
+
+            $pdo->exec('SET foreign_key_checks = 1;');
+
+            $tableCount = $inspector->tableCount($dbName);
+            if ($tableCount === 0) {
+                throw new RuntimeException("El script se procesó pero no se crearon tablas en '{$dbName}'.");
+            }
         } catch (Throwable $e) {
-            Log::warning('No se pudo reinyectar respaldo en MySQL: '.$e->getMessage());
+            Log::error('Fallo en inyección MySQL durante restauración: '.$e->getMessage(), [
+                'target_db' => $dbName,
+                'exception' => $e,
+            ]);
+
+            throw new RuntimeException("Error en restauración de base de datos ({$dbName}): {$e->getMessage()}", previous: $e);
         }
     }
 

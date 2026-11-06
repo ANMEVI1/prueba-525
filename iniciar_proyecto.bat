@@ -139,11 +139,16 @@ if errorlevel 1 (
 :: 5. Limpieza de caché local
 "%PHP_BIN%" artisan optimize:clear >nul 2>nul
 
+:: 6. Iniciar Programador Automatizado de Respaldos (Scheduler en segundo plano)
+echo [INFO] Arrancando Programador de Respaldos Automáticos en segundo plano...
+start "IESP Quiñones - Automatización de Respaldos TI" /min "%PHP_BIN%" artisan schedule:work
+
 echo.
 echo ===============================================================================
 echo   SISTEMA DE CONTINUIDAD TI PREPARADO Y ACTIVO
 echo ===============================================================================
 echo   * URL del Sistema:    http://127.0.0.1:8000
+echo   * Scheduler Activo:   Automatización en segundo plano (schedule:work)
 echo   * Usuario de Acceso:  Admin  (o admin@demo.local)
 echo   * Contraseña:         Admin
 echo ===============================================================================

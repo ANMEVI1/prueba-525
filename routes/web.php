@@ -42,6 +42,7 @@ Route::middleware('auth')->group(function (): void {
     // Respaldos y Recuperación
     Route::get('/backups', [BackupController::class, 'index'])->name('backups.index');
     Route::post('/backups', [BackupController::class, 'store'])->middleware('throttle:5,1')->name('backups.store');
+    Route::get('/backups/{demoBackup}/preflight', [BackupController::class, 'preflight'])->name('backups.preflight');
     Route::post('/backups/{demoBackup}/restore', [BackupController::class, 'restore'])->middleware('throttle:5,1')->name('backups.restore');
     Route::get('/backups/{demoBackup}/download/{format?}', [BackupController::class, 'download'])->name('backups.download');
     Route::post('/backups/upload-restore', [BackupController::class, 'uploadRestore'])->name('backups.upload-restore');

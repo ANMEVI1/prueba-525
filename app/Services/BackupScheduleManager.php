@@ -131,10 +131,40 @@ class BackupScheduleManager
         foreach ($expiredBackups as $backup) {
             if ($backup->artifact_path && $disk->exists($backup->artifact_path)) {
                 $disk->delete($backup->artifact_path);
+
+                // Eliminar posibles sidecars de texto plano o firmas sha256
+                $sqlSidecar = str_replace('.backup.enc', '.dump.sql', (string) $backup->artifact_path);
+                if ($disk->exists($sqlSidecar)) {
+                    $disk->delete($sqlSidecar);
+                }
+                if ($disk->exists($sqlSidecar.'.sha256')) {
+                    $disk->delete($sqlSidecar.'.sha256');
+                }
             }
+
             if ($backup->secondary_path && $disk->exists($backup->secondary_path)) {
                 $disk->delete($backup->secondary_path);
+                if ($disk->exists($backup->secondary_path.'.sha256')) {
+                    $disk->delete($backup->secondary_path.'.sha256');
+                }
             }
+
+            // Limpieza en ruta física si existe
+            $filename = basename((string) $backup->artifact_path);
+            if ($filename !== '') {
+                $storageDest = $this->defaultConfig()['storage_destination'];
+                $physicalPrimary = storage_path('app/backups'.DIRECTORY_SEPARATOR.$filename);
+                if (file_exists($physicalPrimary)) {
+                    @unlink($physicalPrimary);
+                    @unlink("{$physicalPrimary}.sha256");
+                }
+                $physicalSql = str_replace('.backup.enc', '.dump.sql', $physicalPrimary);
+                if (file_exists($physicalSql)) {
+                    @unlink($physicalSql);
+                    @unlink("{$physicalSql}.sha256");
+                }
+            }
+
             $backup->delete();
             $deletedCount++;
         }
@@ -157,7 +187,7 @@ class BackupScheduleManager
             'secondary_path' => 'backups/secondary',
             'storage_destination' => 'storage/app/backups',
             'folder_structure' => 'single_folder',
-            'save_format' => 'both',
+            'save_format' => 'encrypted',
             'last_run_at' => null,
             'last_status' => null,
         ];

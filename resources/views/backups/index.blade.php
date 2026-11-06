@@ -201,13 +201,22 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-right">
                                     <div class="inline-flex items-center gap-1.5">
                                         @if ($backup->isRestorable())
-                                            <form method="POST" action="{{ route('backups.restore', $backup) }}" class="inline">
-                                                @csrf
-                                                <input type="hidden" name="redirect_to" value="{{ url()->current() }}">
-                                                <x-ui.button type="submit" variant="primary" size="sm" icon="rotate-ccw" title="Restaurar copia de seguridad en MySQL">
-                                                    Restaurar
-                                                </x-ui.button>
-                                            </form>
+                                            <button
+                                                type="button"
+                                                onclick="openRestoreVerification(
+                                                    {{ $backup->id }},
+                                                    '{{ addslashes($backup->database_name ?? '') }}',
+                                                    '{{ $backup->created_at?->format('d/m/Y H:i:s') }}',
+                                                    '{{ $backup->formattedSize() }}',
+                                                    '{{ route('backups.restore', $backup) }}',
+                                                    '{{ route('backups.preflight', $backup) }}'
+                                                )"
+                                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+                                                title="Analizar servidor y restaurar copia de seguridad en MySQL/MariaDB"
+                                            >
+                                                <x-ui.icon name="rotate-ccw" class="size-3.5" />
+                                                <span>Restaurar</span>
+                                            </button>
                                         @endif
 
                                         <a href="{{ route('backups.download', ['demoBackup' => $backup, 'format' => 'sql']) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-700 transition" title="Descargar script SQL directo para importar en phpMyAdmin">
@@ -370,19 +379,49 @@
                             </select>
                         </div>
 
-                        <!-- Base de Datos Asignada -->
+                        <!-- Base de Datos Asignada Dinámica -->
                         <div>
-                            <label for="form_database" class="block font-bold text-slate-800 text-xs mb-1.5">
-                                Base de Datos Asignada
-                            </label>
-                            <input
-                                type="text"
-                                id="form_database"
-                                name="database"
-                                value="{{ $scheduleConfig['database'] ?? 'iesp_continuidad_demo' }}"
-                                required
-                                class="w-full text-xs font-mono font-bold rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                            >
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="form_database_select" class="block font-bold text-slate-800 text-xs">
+                                    Base de Datos Asignada
+                                </label>
+                                <span class="text-[10px] font-semibold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200">
+                                    {{ $serverProfile['stack'] ?? ($detection['stack'] ?? 'Servidor') }} · {{ count($serverDatabases ?? []) }} BDs detectadas
+                                </span>
+                            </div>
+
+                            @php
+                                $currentConfigDb = $scheduleConfig['database'] ?? config('database.connections.mysql.database', 'iesp_continuidad_demo');
+                                $databasesList = $serverDatabases ?? ($detection['databases'] ?? []);
+                                $isKnownDb = in_array($currentConfigDb, $databasesList, true);
+                            @endphp
+
+                            <div class="space-y-2">
+                                <select
+                                    id="form_database_select"
+                                    class="w-full text-xs font-semibold rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                                    onchange="handleDbSelectChange(this)"
+                                >
+                                    @foreach ($databasesList as $db)
+                                        <option value="{{ $db }}" {{ $currentConfigDb === $db ? 'selected' : '' }}>
+                                            🗄️ {{ $db }} {{ $db === config('database.connections.mysql.database') ? '· (Principal del Sistema)' : '' }}
+                                        </option>
+                                    @endforeach
+                                    <option value="__custom__" {{ ! $isKnownDb ? 'selected' : '' }}>
+                                        ✍️ Escribir otra base de datos personalizada...
+                                    </option>
+                                </select>
+
+                                <input
+                                    type="text"
+                                    id="form_database"
+                                    name="database"
+                                    value="{{ $currentConfigDb }}"
+                                    required
+                                    placeholder="Nombre exacto de la base de datos en MySQL"
+                                    class="w-full text-xs font-mono font-bold rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 {{ $isKnownDb ? 'hidden' : '' }}"
+                                >
+                            </div>
                         </div>
                     </div>
 
@@ -766,5 +805,172 @@
         </form>
     </x-ui.modal>
 
+    <!-- Modal: Verificación y Confirmación Inteligente de Restauración -->
+    <x-ui.modal id="modal-restore-verification" title="Verificación Previa a la Restauración" size="md">
+        <!-- Spinner mientras consulta al servidor en tiempo real -->
+        <div id="rv-loader" class="py-8 text-center space-y-3">
+            <div class="inline-block size-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-xs font-semibold text-slate-600">Inspeccionando motor de base de datos y esquemas activos en el servidor...</p>
+        </div>
+
+        <!-- Contenido una vez inspeccionado el servidor -->
+        <div id="rv-content" class="hidden space-y-4">
+            <!-- Ficha Técnica de Inspección -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                    <span class="text-slate-500 font-medium">Servidor Activo Detectado:</span>
+                    <span id="rv-server-label" class="font-bold text-slate-900 font-mono"></span>
+                </div>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                    <span class="text-slate-500 font-medium">Base de Datos Objetivo:</span>
+                    <span id="rv-database-name" class="font-bold text-brand-700 font-mono text-sm"></span>
+                </div>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                    <span class="text-slate-500 font-medium">Fecha del Respaldo:</span>
+                    <span id="rv-backup-date" class="font-semibold text-slate-700"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500 font-medium">Tamaño del Paquete:</span>
+                    <span id="rv-backup-size" class="font-semibold text-slate-700"></span>
+                </div>
+            </div>
+
+            <!-- Banner Alerta: La base de datos ya existe -->
+            <div id="rv-banner-exists" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-2">
+                <div class="flex items-center gap-2">
+                    <x-ui.icon name="alert-triangle" class="size-5 text-amber-600 shrink-0" />
+                    <h4 class="font-extrabold uppercase tracking-wide text-amber-900">
+                        Atención: La base de datos ya existe en el servidor (<span id="rv-server-stack"></span>)
+                    </h4>
+                </div>
+                <p class="leading-relaxed">
+                    Esta base de datos ya está creada en tu servidor local y contiene actualmente
+                    <strong id="rv-table-count" class="font-extrabold underline text-amber-950"></strong>.
+                </p>
+                <div class="p-2 rounded-lg bg-white/70 border border-amber-200 text-[11px] text-amber-800 space-y-1">
+                    <p>• La restauración sobreescribirá y actualizará las tablas con los datos de esta copia de seguridad.</p>
+                    <p>• La sintaxis SQL se adaptará automáticamente para evitar incompatibilidades de motor (<span id="rv-flavor-badge"></span>).</p>
+                </div>
+            </div>
+
+            <!-- Banner Informativo: Base de datos nueva -->
+            <div id="rv-banner-new" class="hidden p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs space-y-2">
+                <div class="flex items-center gap-2">
+                    <x-ui.icon name="check-circle" class="size-5 text-emerald-600 shrink-0" />
+                    <h4 class="font-extrabold uppercase tracking-wide text-emerald-900">
+                        Base de Datos Nueva (Se creará automáticamente)
+                    </h4>
+                </div>
+                <p class="leading-relaxed">
+                    La base de datos no existe actualmente en el servidor. El sistema la creará automáticamente con codificación UTF-8 Multibyte e importará todas las tablas y registros.
+                </p>
+            </div>
+
+            <p class="text-[11px] text-slate-500 italic">
+                * Las restricciones de claves foráneas e integridad referencial se gestionan en modo seguro durante la inyección.
+            </p>
+
+            <!-- Formulario de Envío de Restauración -->
+            <form id="form-restore-action" method="POST" action="" class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                @csrf
+                <input type="hidden" name="redirect_to" value="{{ url()->current() }}">
+                <x-ui.button type="button" data-modal-close="#modal-restore-verification" variant="outline" size="md">
+                    Cancelar
+                </x-ui.button>
+                <x-ui.button type="submit" id="rv-btn-confirm" variant="primary" size="md" icon="rotate-ccw">
+                    Sí, Proceder con la Restauración
+                </x-ui.button>
+            </form>
+        </div>
+    </x-ui.modal>
+
 </div>
+
+<script>
+    function handleDbSelectChange(select) {
+        const input = document.getElementById('form_database');
+        if (!input) return;
+        if (select.value === '__custom__') {
+            input.classList.remove('hidden');
+            input.value = '';
+            input.focus();
+        } else {
+            input.classList.add('hidden');
+            input.value = select.value;
+        }
+    }
+
+    function openRestoreVerification(backupId, databaseName, backupDate, backupSize, restoreUrl, preflightUrl) {
+        const modal = document.querySelector('#modal-restore-verification');
+        if (!modal) return;
+
+        const loader = document.getElementById('rv-loader');
+        const content = document.getElementById('rv-content');
+        const btnConfirm = document.getElementById('rv-btn-confirm');
+        const formAction = document.getElementById('form-restore-action');
+
+        loader.classList.remove('hidden');
+        content.classList.add('hidden');
+        btnConfirm.disabled = true;
+        formAction.action = restoreUrl;
+
+        modal.classList.remove('hidden');
+        document.body.classList.add('overflow-hidden');
+
+        fetch(preflightUrl, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Error al conectar con el servidor.');
+            return response.json();
+        })
+        .then(data => {
+            loader.classList.add('hidden');
+            content.classList.remove('hidden');
+            btnConfirm.disabled = false;
+
+            document.getElementById('rv-server-label').textContent = data.label || (data.stack + ' · ' + data.flavor);
+            document.getElementById('rv-database-name').textContent = data.database || databaseName;
+            document.getElementById('rv-backup-date').textContent = data.backup_date || backupDate;
+            document.getElementById('rv-backup-size').textContent = data.backup_size || backupSize;
+            document.getElementById('rv-flavor-badge').textContent = data.flavor;
+
+            const bannerExists = document.getElementById('rv-banner-exists');
+            const bannerNew = document.getElementById('rv-banner-new');
+            const stackSpan = document.getElementById('rv-server-stack');
+            const tableCountSpan = document.getElementById('rv-table-count');
+
+            if (data.exists) {
+                bannerExists.classList.remove('hidden');
+                bannerNew.classList.add('hidden');
+                stackSpan.textContent = data.stack;
+                tableCountSpan.textContent = data.table_count + (data.table_count === 1 ? ' tabla registrada' : ' tablas registradas');
+            } else {
+                bannerExists.classList.add('hidden');
+                bannerNew.classList.remove('hidden');
+            }
+        })
+        .catch(err => {
+            loader.classList.add('hidden');
+            content.classList.remove('hidden');
+            btnConfirm.disabled = false;
+
+            document.getElementById('rv-server-label').textContent = 'Servidor Local (Modo Seguro)';
+            document.getElementById('rv-database-name').textContent = databaseName;
+            document.getElementById('rv-backup-date').textContent = backupDate;
+            document.getElementById('rv-backup-size').textContent = backupSize;
+            document.getElementById('rv-flavor-badge').textContent = 'MySQL/MariaDB';
+
+            const bannerExists = document.getElementById('rv-banner-exists');
+            const bannerNew = document.getElementById('rv-banner-new');
+            bannerExists.classList.remove('hidden');
+            bannerNew.classList.add('hidden');
+            document.getElementById('rv-server-stack').textContent = 'Servidor Local';
+            document.getElementById('rv-table-count').textContent = 'tablas existentes comprobadas';
+        });
+    }
+</script>
 @endsection

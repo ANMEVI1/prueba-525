@@ -41,6 +41,17 @@ class AuditLog extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::updating(function (): void {
+            throw new \RuntimeException('Los registros de auditoría institucional son inmutables y no pueden modificarse.');
+        });
+
+        static::deleting(function (): void {
+            throw new \RuntimeException('Los registros de auditoría institucional son de solo adición (WORM) y no pueden eliminarse.');
+        });
+    }
+
     /**
      * @return BelongsTo<User, $this>
      */

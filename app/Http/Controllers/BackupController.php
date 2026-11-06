@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AuditAction;
 use App\Models\DemoBackup;
+use App\Services\AuditLogger;
 use App\Services\BackupDemoDatabase;
 use App\Services\BackupScheduleManager;
 use App\Services\ContinuityMetrics;
+use App\Services\DatabaseServerInspector;
 use App\Services\DemoBackupWorkflow;
 use App\Services\EnvironmentDetector;
 use App\Services\FolderPickerService;
+use App\Services\SqlScriptProcessor;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -17,7 +21,6 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use PDO;
 
 class BackupController extends Controller
 {
@@ -27,6 +30,8 @@ class BackupController extends Controller
         private readonly EnvironmentDetector $detector,
         private readonly BackupScheduleManager $scheduleManager,
         private readonly FolderPickerService $folderPicker,
+        private readonly DatabaseServerInspector $serverInspector,
+        private readonly SqlScriptProcessor $sqlProcessor,
     ) {}
 
     public function index(Request $request): View
@@ -45,6 +50,12 @@ class BackupController extends Controller
         $folderPresets = $this->folderPicker->getQuickPresets();
         $systemDrives = $this->folderPicker->getSystemDrives();
 
+        $serverProfile = $this->serverInspector->profile();
+        $serverDatabases = $this->serverInspector->listDatabases();
+        if (empty($serverDatabases) && ! empty($detection['databases'])) {
+            $serverDatabases = $detection['databases'];
+        }
+
         $restorableBackup = DemoBackup::query()
             ->where('status', 'success')
             ->latest('id')
@@ -59,6 +70,8 @@ class BackupController extends Controller
             'scheduleConfig' => $scheduleConfig,
             'folderPresets' => $folderPresets,
             'systemDrives' => $systemDrives,
+            'serverProfile' => $serverProfile,
+            'serverDatabases' => $serverDatabases,
         ]);
     }
 
@@ -73,6 +86,30 @@ class BackupController extends Controller
             ->with('backup_status', "Copia de seguridad #{$backup->id} creada exitosamente ({$backup->database_name} · {$backup->formattedSize()}).");
     }
 
+    public function preflight(DemoBackup $demoBackup): JsonResponse
+    {
+        $profile = $this->serverInspector->profile();
+        $targetDb = $demoBackup->database_name ?: (string) config('database.connections.mysql.database', 'iesp_continuidad_demo');
+        $isAvailable = (bool) ($profile['available'] ?? false);
+        $exists = $isAvailable ? $this->serverInspector->databaseExists($targetDb) : false;
+        $tableCount = ($isAvailable && $exists) ? $this->serverInspector->tableCount($targetDb) : 0;
+
+        return response()->json([
+            'success' => true,
+            'backup_id' => $demoBackup->id,
+            'database' => $targetDb,
+            'is_available' => $isAvailable,
+            'stack' => $profile['stack'] ?? 'Desconocido',
+            'flavor' => $profile['flavor'] ?? 'MySQL',
+            'version' => $profile['version'] ?? '',
+            'label' => $profile['label'] ?? 'Servidor Local',
+            'exists' => $exists,
+            'table_count' => $tableCount,
+            'backup_size' => $demoBackup->formattedSize(),
+            'backup_date' => $demoBackup->created_at?->format('d/m/Y H:i:s'),
+        ]);
+    }
+
     public function restore(Request $request, DemoBackup $demoBackup): RedirectResponse
     {
         $restoredPath = $this->workflow->restore($demoBackup);
@@ -80,7 +117,7 @@ class BackupController extends Controller
         $targetUrl = $this->resolveRedirectTarget($request);
 
         return redirect($targetUrl)
-            ->with('backup_status', "Recuperación completada en {$demoBackup->restore_duration_ms} ms. Base verificada con éxito.");
+            ->with('backup_status', "Recuperación completada en {$demoBackup->restore_duration_ms} ms. Base de datos verificada con éxito.");
     }
 
     private function resolveRedirectTarget(Request $request): string
@@ -126,6 +163,13 @@ class BackupController extends Controller
             'save_format' => $validated['save_format'] ?? 'both',
         ]);
 
+        app(AuditLogger::class)->record(
+            AuditAction::ConfigUpdated,
+            "Configuración de almacenamiento y respaldos actualizada (Base: {$validated['database']}, Frecuencia: {$validated['frequency']}).",
+            null,
+            $validated
+        );
+
         return redirect()
             ->back()
             ->with('success', 'Configuración de almacenamiento, destinos y programación actualizada.');
@@ -133,7 +177,15 @@ class BackupController extends Controller
 
     public function runScheduledNow(Request $request): RedirectResponse
     {
-        Artisan::call('backup:auto-run', ['--force' => true]);
+        $exitCode = Artisan::call('backup:auto-run', ['--force' => true]);
+
+        if ($exitCode !== 0) {
+            $output = trim(Artisan::output());
+
+            return redirect()
+                ->back(fallback: route('backups.index'))
+                ->with('error', 'El respaldo programado no pudo completarse: '.($output ?: "Código de salida {$exitCode}"));
+        }
 
         return redirect()
             ->back(fallback: route('backups.index'))
@@ -220,28 +272,59 @@ class BackupController extends Controller
 
         $file = $request->file('sql_file');
         $content = file_get_contents($file->getRealPath());
-
-        $host = config('database.connections.mysql.host', '127.0.0.1');
-        $port = config('database.connections.mysql.port', '3306');
         $database = config('database.connections.mysql.database', 'iesp_continuidad_demo');
-        $username = config('database.connections.mysql.username', 'root');
-        $password = config('database.connections.mysql.password', '');
 
         try {
-            $pdo = new PDO("mysql:host={$host};port={$port};charset=utf8mb4", $username, $password, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4',
-            ]);
+            $profile = $this->serverInspector->profile();
+            if (! $profile['available']) {
+                return redirect()->back()->with('error', 'El servidor MySQL/MariaDB no está disponible actualmente.');
+            }
+
+            $statements = $this->sqlProcessor->split($content);
+            if (empty($statements)) {
+                return redirect()->back()->with('error', 'El archivo proporcionado no contiene sentencias SQL válidas.');
+            }
+
+            $flavor = $profile['flavor'];
+            $pdo = $this->serverInspector->connection();
             $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$database}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
             $pdo->exec("USE `{$database}`;");
-            $pdo->exec($content);
+            $pdo->exec('SET foreign_key_checks = 0;');
+            $pdo->exec("SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO';");
+
+            foreach ($statements as $statement) {
+                $adapted = $this->sqlProcessor->adaptForServer($statement, $flavor);
+                if ($adapted !== null) {
+                    $pdo->exec($adapted);
+                }
+            }
+
+            $pdo->exec('SET foreign_key_checks = 1;');
+
+            $tableCount = $this->serverInspector->tableCount($database);
+            if ($tableCount === 0) {
+                return redirect()->back()->with('error', 'El archivo SQL se ejecutó pero no generó ninguna tabla en la base de datos.');
+            }
+
+            app(AuditLogger::class)->record(
+                AuditAction::SqlUploaded,
+                "Restauración manual vía archivo SQL ('{$file->getClientOriginalName()}') en base '{$database}' ({$tableCount} tablas).",
+                null,
+                [
+                    'filename' => $file->getClientOriginalName(),
+                    'size_bytes' => $file->getSize(),
+                    'database' => $database,
+                    'statements_count' => count($statements),
+                    'tables_count' => $tableCount,
+                ]
+            );
 
             app(ContinuityMetrics::class)->clearCache();
             app(BackupDemoDatabase::class)->clearCache();
 
             return redirect()
                 ->back()
-                ->with('backup_status', '¡Archivo SQL subido y restaurado exitosamente en MySQL!');
+                ->with('backup_status', "¡Archivo SQL subido y restaurado exitosamente en {$profile['stack']} ({$flavor})! Se verificaron {$tableCount} tablas activas.");
         } catch (\Throwable $e) {
             return redirect()
                 ->back()

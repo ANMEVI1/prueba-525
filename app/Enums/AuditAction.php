@@ -17,6 +17,8 @@ enum AuditAction: string
     case StudentUpdated = 'student.updated';
     case StudentDeleted = 'student.deleted';
     case PasswordUpdated = 'auth.password_updated';
+    case ConfigUpdated = 'system.config_updated';
+    case SqlUploaded = 'backup.sql_uploaded';
 
     /**
      * Human readable label shown in the interface.
@@ -34,6 +36,8 @@ enum AuditAction: string
             self::StudentUpdated => 'Estudiante actualizado',
             self::StudentDeleted => 'Estudiante eliminado',
             self::PasswordUpdated => 'Contraseña actualizada',
+            self::ConfigUpdated => 'Configuración actualizada',
+            self::SqlUploaded => 'SQL manual restaurado',
         };
     }
 
@@ -43,9 +47,9 @@ enum AuditAction: string
     public function tone(): string
     {
         return match ($this) {
-            self::BackupCreated, self::BackupRestored, self::StudentCreated, self::PasswordUpdated => 'success',
+            self::BackupCreated, self::BackupRestored, self::StudentCreated, self::PasswordUpdated, self::SqlUploaded => 'success',
             self::BackupFailed, self::RestoreRejected, self::StudentDeleted => 'danger',
-            self::StudentUpdated => 'brand',
+            self::StudentUpdated, self::ConfigUpdated => 'brand',
             self::Login, self::Logout => 'neutral',
         };
     }
@@ -61,8 +65,9 @@ enum AuditAction: string
             self::PasswordUpdated => 'key',
             self::BackupCreated => 'shield-check',
             self::BackupFailed, self::RestoreRejected => 'alert-triangle',
-            self::BackupRestored => 'rotate-ccw',
+            self::BackupRestored, self::SqlUploaded => 'rotate-ccw',
             self::StudentCreated, self::StudentUpdated, self::StudentDeleted => 'users',
+            self::ConfigUpdated => 'settings',
         };
     }
 }

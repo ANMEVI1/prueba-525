@@ -47,16 +47,18 @@
 
         <x-ui.stat-card
             label="Tiempo RTO Obtenido"
-            :value="$metrics['latestRestoreMs'] ? $metrics['latestRestoreMs'] . ' ms' : '< 15 min'"
+            :value="$metrics['latestRestoreMs'] ? $metrics['latestRestoreMs'] . ' ms' : 'Sin medir aún'"
+            :description="$metrics['latestRestoreMs'] ? 'Meta establecida: < 15 min' : 'Objetivo institucional: < 15 min'"
             icon="clock"
-            tone="brand"
+            :tone="$metrics['latestRestoreMs'] ? 'brand' : 'neutral'"
         />
 
         <x-ui.stat-card
-            label="Integridad de Datos"
-            value="100%"
+            label="Tasa de Éxito e Integridad"
+            :value="$metrics['successRate'] !== null ? $metrics['successRate'] . '%' : ($metrics['total'] > 0 ? '100%' : 'Sin registros')"
+            :description="$metrics['successful'] . ' exitosos de ' . $metrics['total'] . ' intentos'"
             icon="shield-check"
-            tone="success"
+            :tone="($metrics['successRate'] ?? 100) >= 95 ? 'success' : 'danger'"
         />
 
         <x-ui.stat-card
@@ -128,8 +130,8 @@
             <x-ui.card :padding="false">
                 <x-slot:title>Fuentes de Datos Institucionales</x-slot:title>
                 <x-slot:action>
-                    <x-ui.badge tone="success" size="sm">
-                        Servidor Conectado
+                    <x-ui.badge :tone="!empty($detection['mysql_available']) ? 'success' : 'danger'" size="sm">
+                        {{ !empty($detection['mysql_available']) ? 'Servidor Activo (' . ($detection['stack'] ?? 'MySQL') . ')' : 'Servidor Inaccesible' }}
                     </x-ui.badge>
                 </x-slot:action>
 

@@ -6,6 +6,7 @@ use App\Services\BackupDemoDatabase;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DataSourceController extends Controller
 {
@@ -31,14 +32,36 @@ class DataSourceController extends Controller
 
         $tableData = [];
         $columns = [];
+        $sourceType = 'SQLite Aislamiento';
 
-        if ($overview['available']) {
-            $connection = DB::connection('backup_demo');
-            $sampleRows = $connection->table($selectedTable)->limit(15)->get();
+        try {
+            if ($selectedTable === 'estudiantes' && Schema::connection('mysql')->hasTable('estudiantes')) {
+                $sampleRows = DB::connection('mysql')->table('estudiantes')->latest('id')->limit(15)->get();
+                $sourceType = 'MySQL Principal (Activa)';
+                if ($sampleRows->isNotEmpty()) {
+                    $columns = array_keys((array) $sampleRows->first());
+                    $tableData = $sampleRows->map(fn ($r) => (array) $r)->all();
+                    $overview['counts']['estudiantes'] = DB::connection('mysql')->table('estudiantes')->count();
+                }
+            } elseif ($overview['available']) {
+                $connection = DB::connection('backup_demo');
+                $sampleRows = $connection->table($selectedTable)->limit(15)->get();
 
-            if ($sampleRows->isNotEmpty()) {
-                $columns = array_keys((array) $sampleRows->first());
-                $tableData = $sampleRows->map(fn ($r) => (array) $r)->all();
+                if ($sampleRows->isNotEmpty()) {
+                    $columns = array_keys((array) $sampleRows->first());
+                    $tableData = $sampleRows->map(fn ($r) => (array) $r)->all();
+                }
+            }
+        } catch (\Throwable) {
+            // Fallback gracefully if MySQL connection fails
+            if ($overview['available']) {
+                $connection = DB::connection('backup_demo');
+                $sampleRows = $connection->table($selectedTable)->limit(15)->get();
+
+                if ($sampleRows->isNotEmpty()) {
+                    $columns = array_keys((array) $sampleRows->first());
+                    $tableData = $sampleRows->map(fn ($r) => (array) $r)->all();
+                }
             }
         }
 
@@ -48,6 +71,7 @@ class DataSourceController extends Controller
             'selectedTable' => $selectedTable,
             'columns' => $columns,
             'tableData' => $tableData,
+            'sourceType' => $sourceType,
         ]);
     }
 }

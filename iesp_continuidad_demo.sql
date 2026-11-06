@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 06-11-2026 21:18:20
+-- Tiempo de generación: 06-11-2026 21:45:19
 -- Compatibilidad: XAMPP (MariaDB 10.4+) / Laragon (MySQL 8.x) / phpMyAdmin
 -- Arquitectura: IESP Cap. FAP José Abelardo Quiñones - Continuidad TI
 --
@@ -58,7 +58,8 @@ INSERT INTO `audit_logs` (`id`, `user_id`, `action`, `subject_type`, `subject_id
 (4, 1, 'backup.created', 'App\\Models\\DemoBackup', 9, 'Respaldo #9 de [novaflor_sali] (mysql) cifrado y replicado con SHA-256.', '{\"type\": \"mysql\", \"sha256\": \"3b8dcf2235d8bc49e1d6da631e55761b2657e24960519ac0776c00876a122287\", \"database\": \"novaflor_sali\", \"automated\": false, \"replicated\": true, \"size_bytes\": 44856, \"duration_ms\": 2204}', '127.0.0.1', '2026-11-06 09:48:05'),
 (5, 1, 'backup.created', 'App\\Models\\DemoBackup', 10, 'Respaldo #10 de [novaflor_sali] (mysql) cifrado y replicado con SHA-256.', '{\"type\": \"mysql\", \"sha256\": \"259ddd662a17b79b4ffe007202b193777741b96f785a1f1d57b628d110e6d436\", \"database\": \"novaflor_sali\", \"automated\": false, \"replicated\": true, \"size_bytes\": 44856, \"duration_ms\": 1511}', '127.0.0.1', '2026-11-06 10:54:01'),
 (6, 1, 'auth.logout', 'App\\Models\\User', 1, 'Cierre de sesión del usuario Admin.', NULL, '127.0.0.1', '2026-11-06 19:41:58'),
-(7, NULL, 'backup.restored', 'App\\Models\\DemoBackup', 11, 'Recuperación verificada de [iesp_continuidad_demo] completada en 1264 ms (RTO verificado).', '{\"database\": \"iesp_continuidad_demo\", \"duration_ms\": 1264, \"restored_path\": \"demo-restores/a3d45505-e5fa-4228-97dd-1db38ddcf76b.iesp-continuidad-demo.restored.sql\"}', '127.0.0.1', '2026-11-06 21:12:02');
+(7, NULL, 'backup.restored', 'App\\Models\\DemoBackup', 11, 'Recuperación verificada de [iesp_continuidad_demo] completada en 1264 ms (RTO verificado).', '{\"database\": \"iesp_continuidad_demo\", \"duration_ms\": 1264, \"restored_path\": \"demo-restores/a3d45505-e5fa-4228-97dd-1db38ddcf76b.iesp-continuidad-demo.restored.sql\"}', '127.0.0.1', '2026-11-06 21:12:02'),
+(8, 1, 'auth.login', 'App\\Models\\User', 1, 'Inicio de sesión correcto del usuario Admin.', '{\"email\": \"admin@demo.local\"}', '127.0.0.1', '2026-11-06 21:34:56');
 
 -- --------------------------------------------------------
 --
@@ -152,6 +153,8 @@ CREATE TABLE `estudiantes` (
 
 --
 -- Volcado de datos para la tabla `estudiantes`
+-- AVISO DE PRIVACIDAD: Los registros a continuación son 100% SINTÉTICOS Y FICTICIOS
+-- generados exclusivamente para pruebas técnicas institucionales (Ley N° 29733).
 --
 INSERT INTO `estudiantes` (`id`, `dni`, `nombres`, `carrera`, `correo`, `created_at`, `updated_at`) VALUES
 (1, '72345678', 'Carlos Raúl Peña Alva', 'Plataformas y Servicios de TI', 'cpena@iesp.edu.pe', '2026-11-06 14:19:03', '2026-11-06 14:19:03'),
@@ -181,7 +184,47 @@ INSERT INTO `estudiantes` (`id`, `dni`, `nombres`, `carrera`, `correo`, `created
 (45, '71000017', 'Gonzalo David Castillo Barreto', 'Desarrollo de Sistemas de Información', 'gonzalo.castillo@iesp.edu.pe', '2026-11-06 16:17:55', '2026-11-06 16:17:55'),
 (46, '71000018', 'Ariana Nicole Vásquez Córdova', 'Administración de Empresas', 'ariana.vasquez@iesp.edu.pe', '2026-11-06 16:17:55', '2026-11-06 16:17:55'),
 (47, '71000019', 'Fabricio Emmanuel Luna Ñique', 'Mecatrónica Automotriz', 'fabricio.luna@iesp.edu.pe', '2026-11-06 16:17:55', '2026-11-06 16:17:55'),
-(48, '71000020', 'Génesis Milagros Lozano Chávez', 'Plataformas y Servicios de Tecnologías de la Información', 'genesis.lozano@iesp.edu.pe', '2026-11-06 16:17:55', '2026-11-06 16:17:55');
+(48, '71000020', 'Génesis Milagros Lozano Chávez', 'Plataformas y Servicios de Tecnologías de la Información', 'genesis.lozano@iesp.edu.pe', '2026-11-06 16:17:55', '2026-11-06 16:17:55'),
+(49, '71484241', 'Jimena Adriana Lozano Luna', 'Plataformas y Servicios de Tecnologías de la Información', 'jimena.lozano@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(50, '75488567', 'Óscar José Lozano Vílchez', 'Desarrollo de Sistemas de Información', 'oscar.lozano@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(51, '71896322', 'Sebastián Mauricio García Peña', 'Contabilidad y Finanzas', 'sebastian.garcia@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(52, '77601511', 'Mateo Darío Fernández Vásquez', 'Administración de Empresas', 'mateo.fernandez@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(53, '73153875', 'Ignacio Víctor Luna Quiñones', 'Mecatrónica Automotriz', 'ignacio.luna@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(54, '72900684', 'Ximena Camila Gutiérrez Gómez', 'Plataformas y Servicios de Tecnologías de la Información', 'ximena.gutierrez@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(55, '71776217', 'Raúl Miguel Medina Huamán', 'Desarrollo de Sistemas de Información', 'raul.medina@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(56, '70770499', 'Milagros Natalia Fajardo Chunga', 'Contabilidad y Finanzas', 'milagros.fajardo@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(57, '78548162', 'Gabriel Juan Medina Zavala', 'Administración de Empresas', 'gabriel.medina@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(58, '79561806', 'Elena Melany Quispe Medina', 'Mecatrónica Automotriz', 'elena.quispe@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(59, '75723023', 'Rubén Rodrigo Flores Tello', 'Plataformas y Servicios de Tecnologías de la Información', 'ruben.flores@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(60, '72133013', 'Fiorella María Espinoza Benítez', 'Desarrollo de Sistemas de Información', 'fiorella.espinoza@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(61, '70463370', 'Mauricio Rubén Olivares Peña', 'Contabilidad y Finanzas', 'mauricio.olivares@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(62, '79016164', 'Fátima Carmen Medina Paredes', 'Administración de Empresas', 'fatima.medina@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(63, '75373637', 'Bianca Isabel Vásquez Ríos', 'Mecatrónica Automotriz', 'bianca.vasquez@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(64, '73105146', 'Alejandra Lucía Ñique Torres', 'Plataformas y Servicios de Tecnologías de la Información', 'alejandra.nique@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(65, '78794024', 'Mateo Carlos Gómez Lozano', 'Desarrollo de Sistemas de Información', 'mateo.gomez@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(66, '72674506', 'Gabriela Elena Lozano Ñique', 'Contabilidad y Finanzas', 'gabriela.lozano@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(67, '76796553', 'Álvaro Esteban Ñáñez Morán', 'Administración de Empresas', 'alvaro.nanez@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(68, '75721704', 'Rocío Ariana Quispe Castillo', 'Mecatrónica Automotriz', 'rocio.quispe@iesp.edu.pe', '2026-11-06 21:42:28', '2026-11-06 21:42:28'),
+(69, '79404966', 'Valeria Abigail Medina Lozano', 'Plataformas y Servicios de Tecnologías de la Información', 'valeria.medina@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(70, '72346655', 'Álvaro Óscar Córdova Carranza', 'Desarrollo de Sistemas de Información', 'alvaro.cordova@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(71, '75830120', 'Valeska Andrea Sánchez Tello', 'Contabilidad y Finanzas', 'valeska.sanchez@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(72, '79329398', 'Carmen Sofía Huamán Córdova', 'Administración de Empresas', 'carmen.huaman@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(73, '76886614', 'Bianca Romina Torres Medina', 'Mecatrónica Automotriz', 'bianca.torres@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(74, '79935662', 'Alejandra Romina Olivares Quiñones', 'Plataformas y Servicios de Tecnologías de la Información', 'alejandra.olivares@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(75, '78872905', 'David Sebastián Herrera Lozano', 'Desarrollo de Sistemas de Información', 'david.herrera@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(76, '74729871', 'Ana Elena Herrera Luna', 'Contabilidad y Finanzas', 'ana.herrera@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(77, '74752652', 'Patricia Fátima Flores Cárdenas', 'Administración de Empresas', 'patricia.flores@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(78, '78457408', 'Fernando Manuel Chunga Palacios', 'Mecatrónica Automotriz', 'fernando.chunga@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(79, '72979479', 'Elena Isabel Sánchez Castro', 'Plataformas y Servicios de Tecnologías de la Información', 'elena.sanchez@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(80, '74497297', 'Ariana Natalia Benítez Gutiérrez', 'Desarrollo de Sistemas de Información', 'ariana.benitez@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(81, '75286027', 'Mateo Óscar Flores Díaz', 'Contabilidad y Finanzas', 'mateo.flores@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(82, '79246428', 'María Abigail Quiñones Cañari', 'Administración de Empresas', 'maria.quinones@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(83, '75180619', 'Leonardo Fabricio Alva Vargas', 'Mecatrónica Automotriz', 'leonardo.alva@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(84, '70120993', 'Darío Fabricio Peña Vargas', 'Plataformas y Servicios de Tecnologías de la Información', 'dario.pena@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(85, '77076176', 'Carolina Diana Flores Cañari', 'Desarrollo de Sistemas de Información', 'carolina.flores@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(86, '77976971', 'Patricia Elena Rojas Rodríguez', 'Contabilidad y Finanzas', 'patricia.rojas@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(87, '77448247', 'Carlos Raúl Ñique Zúñiga', 'Administración de Empresas', 'carlos.nique@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31'),
+(88, '79101847', 'Hugo Leonardo Herrera Zavala', 'Mecatrónica Automotriz', 'hugo.herrera@iesp.edu.pe', '2026-11-06 21:43:31', '2026-11-06 21:43:31');
 
 -- --------------------------------------------------------
 --
