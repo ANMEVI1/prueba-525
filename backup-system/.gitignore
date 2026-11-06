@@ -1,0 +1,20 @@
+# Configuración de ejecución y secretos
+/config/backup.config.json
+/config/*.secret*
+/config/*.key
+
+# Respaldos, temporales y estado local
+*.tar
+*.tar.gz
+*.age
+*.tmp
+*.lock
+/data/
+/state/
+
+# Logs y resultados de ejecución
+/logs/**/*.log
+/logs/**/*.json
+/logs/test/*
+!/logs/test/.gitkeep
+/tests/results/

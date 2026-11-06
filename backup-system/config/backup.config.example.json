@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "environment": "replace-with-approved-environment-name",
+  "timezone": "America/Lima",
+  "schedule": {
+    "frequency": "daily",
+    "local_time": "22:00"
+  },
+  "platform_profiles": {
+    "windows": {
+      "source_paths": [
+        "C:\\REEMPLAZAR\\RUTA\\DE\\DATOS"
+      ],
+      "secondary_destination": "\\\\REEMPLAZAR-SERVIDOR\\REEMPLAZAR-RECURSO\\respaldos"
+    },
+    "linux": {
+      "source_paths": [
+        "/REEMPLAZAR/RUTA/DE/DATOS"
+      ],
+      "secondary_destination": "/REEMPLAZAR/PUNTO/DE/MONTAJE/respaldos"
+    }
+  },
+  "retention": {
+    "enabled": false,
+    "daily_copies": 30,
+    "weekly_copies": 12,
+    "monthly_copies": 12
+  },
+  "archive": {
+    "format": "tar",
+    "compression": "gzip"
+  },
+  "encryption": {
+    "enabled": true,
+    "tool": "age",
+    "algorithm": "X25519-ChaCha20-Poly1305",
+    "recipients": [
+      "REEMPLAZAR_POR_DESTINATARIO_PUBLICO_AGE"
+    ]
+  },
+  "integrity": {
+    "hash_algorithm": "SHA-256",
+    "verify_after_transfer": true
+  },
+  "recovery_objective": {
+    "maximum_restore_seconds": 899
+  },
+  "logging": {
+    "level": "INFO",
+    "production_log_directory": "REEMPLAZAR_POR_RUTA_LOCAL_PROTEGIDA",
+    "retention_days": 90
+  }
+}
