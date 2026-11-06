@@ -319,6 +319,11 @@ class DemoBackupWorkflow
             if (! $disk->put($restoredPath, $sourceContents)) {
                 throw new RuntimeException('No se pudo guardar el archivo SQL recuperado.');
             }
+
+            // Re-inyección real en MySQL para restauración efectiva de la base de datos
+            if (! app()->runningUnitTests()) {
+                $this->injectSqlIntoMySql($backup->database_name, $sourceContents);
+            }
         }
 
         $durationMs = $this->elapsedMilliseconds($startedAt);
@@ -342,6 +347,28 @@ class DemoBackupWorkflow
         app(BackupDemoDatabase::class)->clearCache();
 
         return $restoredPath;
+    }
+
+    private function injectSqlIntoMySql(?string $targetDb, string $sql): void
+    {
+        try {
+            $dbName = $targetDb ?: config('database.connections.mysql.database', 'iesp_continuidad_demo');
+            $host = config('database.connections.mysql.host', '127.0.0.1');
+            $port = config('database.connections.mysql.port', '3306');
+            $username = config('database.connections.mysql.username', 'root');
+            $password = config('database.connections.mysql.password', '');
+
+            $pdo = new PDO("mysql:host={$host};port={$port};charset=utf8mb4", $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4',
+            ]);
+
+            $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
+            $pdo->exec("USE `{$dbName}`;");
+            $pdo->exec($sql);
+        } catch (Throwable $e) {
+            Log::warning('No se pudo reinyectar respaldo en MySQL: '.$e->getMessage());
+        }
     }
 
     private function assertSqliteIntegrity(string $databasePath): void
