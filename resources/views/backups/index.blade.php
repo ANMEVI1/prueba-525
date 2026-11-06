@@ -19,6 +19,11 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
+            <button type="button" data-modal-open="#modal-upload-sql" class="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition shadow-xs" title="Restaurar un archivo SQL directamente desde tu navegador">
+                <x-ui.icon name="upload" class="size-4 text-emerald-600" />
+                Subir y Restaurar SQL
+            </button>
+
             <a href="{{ route('backups.runbook') }}" class="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition shadow-xs">
                 <x-ui.icon name="terminal" class="size-4 text-brand-600" />
                 Manual de Restauración
@@ -193,22 +198,28 @@
                                     @endif
                                 </td>
 
-                                <td class="px-6 py-4 whitespace-nowrap text-right space-x-2">
-                                    @if ($backup->isRestorable())
-                                        <form method="POST" action="{{ route('backups.restore', $backup) }}" class="inline">
-                                            @csrf
-                                            <input type="hidden" name="redirect_to" value="{{ url()->current() }}">
-                                            <x-ui.button type="submit" variant="outline" size="sm" icon="rotate-ccw">
-                                                Restaurar
-                                            </x-ui.button>
-                                        </form>
-                                    @elseif ($backup->wasRestored())
-                                        <span class="text-xs font-semibold text-emerald-700 inline-flex items-center gap-1">
-                                            <x-ui.icon name="check-circle" class="size-4" /> Restaurada ({{ $backup->restore_duration_ms }} ms)
-                                        </span>
-                                    @else
-                                        <span class="text-xs text-slate-400">—</span>
-                                    @endif
+                                <td class="px-6 py-4 whitespace-nowrap text-right">
+                                    <div class="inline-flex items-center gap-1.5">
+                                        @if ($backup->isRestorable())
+                                            <form method="POST" action="{{ route('backups.restore', $backup) }}" class="inline">
+                                                @csrf
+                                                <input type="hidden" name="redirect_to" value="{{ url()->current() }}">
+                                                <x-ui.button type="submit" variant="primary" size="sm" icon="rotate-ccw" title="Restaurar copia de seguridad en MySQL">
+                                                    Restaurar
+                                                </x-ui.button>
+                                            </form>
+                                        @endif
+
+                                        <a href="{{ route('backups.download', ['demoBackup' => $backup, 'format' => 'sql']) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-700 transition" title="Descargar script SQL directo para importar en phpMyAdmin">
+                                            <x-ui.icon name="download" class="size-3.5" />
+                                            <span>SQL</span>
+                                        </a>
+
+                                        <a href="{{ route('backups.download', ['demoBackup' => $backup, 'format' => 'enc']) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-amber-700 transition" title="Descargar paquete cifrado institucional (.enc)">
+                                            <x-ui.icon name="shield-check" class="size-3.5" />
+                                            <span>ENC</span>
+                                        </a>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
@@ -714,6 +725,45 @@
                 </x-ui.button>
             </div>
         </div>
+    </x-ui.modal>
+
+    <!-- Modal: Subir y Restaurar SQL Directamente en MySQL -->
+    <x-ui.modal id="modal-upload-sql" title="Subir y Restaurar Archivo SQL en MySQL" size="md">
+        <form method="POST" action="{{ route('backups.upload-restore') }}" enctype="multipart/form-data" class="space-y-4">
+            @csrf
+            <div>
+                <label for="sql_file" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                    Selecciona un archivo .sql desde tu computadora
+                </label>
+                <input
+                    type="file"
+                    id="sql_file"
+                    name="sql_file"
+                    accept=".sql"
+                    required
+                    class="w-full text-xs text-slate-700 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 border border-slate-300 rounded-xl cursor-pointer bg-slate-50/50"
+                >
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                <p class="font-bold flex items-center gap-1.5">
+                    <x-ui.icon name="alert-triangle" class="size-4 text-amber-600" />
+                    Atención:
+                </p>
+                <p class="mt-1 leading-relaxed">
+                    Al confirmar, el script SQL se ejecutará de forma directa e inmediata sobre tu base de datos MySQL activa (XAMPP / Laragon).
+                </p>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <x-ui.button type="button" data-modal-close="#modal-upload-sql" variant="outline" size="md">
+                    Cancelar
+                </x-ui.button>
+                <x-ui.button type="submit" variant="primary" size="md" icon="rotate-ccw">
+                    Restaurar en MySQL Ahora
+                </x-ui.button>
+            </div>
+        </form>
     </x-ui.modal>
 
 </div>

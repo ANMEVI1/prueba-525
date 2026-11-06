@@ -43,6 +43,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/backups', [BackupController::class, 'index'])->name('backups.index');
     Route::post('/backups', [BackupController::class, 'store'])->middleware('throttle:5,1')->name('backups.store');
     Route::post('/backups/{demoBackup}/restore', [BackupController::class, 'restore'])->middleware('throttle:5,1')->name('backups.restore');
+    Route::get('/backups/{demoBackup}/download/{format?}', [BackupController::class, 'download'])->name('backups.download');
+    Route::post('/backups/upload-restore', [BackupController::class, 'uploadRestore'])->name('backups.upload-restore');
     Route::post('/backups/schedule', [BackupController::class, 'updateSchedule'])->name('backups.schedule');
     Route::post('/backups/run-now', [BackupController::class, 'runScheduledNow'])->name('backups.run-now');
     Route::post('/backups/browse-folder', [BackupController::class, 'browseFolder'])->name('backups.browse-folder');
@@ -62,5 +64,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/project', [ProjectController::class, 'index'])->name('project.index');
 
     // Gestión Académica de Estudiantes
+    Route::post('/estudiantes/seed-demo', [EstudianteController::class, 'seedDemo'])->name('estudiantes.seed-demo');
     Route::resource('estudiantes', EstudianteController::class);
 });

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DemoBackup;
+use App\Services\BackupDemoDatabase;
 use App\Services\BackupScheduleManager;
 use App\Services\ContinuityMetrics;
 use App\Services\DemoBackupWorkflow;
@@ -13,6 +14,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use PDO;
 
 class BackupController extends Controller
 {
@@ -165,5 +170,82 @@ class BackupController extends Controller
             'latestBackup' => $latestBackup,
             'scheduleConfig' => $scheduleConfig,
         ]);
+    }
+
+    public function download(DemoBackup $demoBackup, string $format = 'sql')
+    {
+        $safeDb = Str::slug($demoBackup->database_name ?? 'mysql');
+
+        if ($format === 'sql') {
+            $candidates = [
+                storage_path('app/backups/'.basename(str_replace('.backup.enc', '.dump.sql', (string) $demoBackup->artifact_path))),
+                storage_path('app/private/demo-backups/'.basename(str_replace('.backup.enc', '.dump.sql', (string) $demoBackup->artifact_path))),
+            ];
+
+            foreach ($candidates as $candidate) {
+                if (file_exists($candidate)) {
+                    return response()->download($candidate, "respaldo-{$safeDb}-{$demoBackup->id}.sql");
+                }
+            }
+
+            // Descifrar y generar en el acto si no está en disco
+            $disk = Storage::disk('local');
+            if ($disk->exists((string) $demoBackup->artifact_path)) {
+                $encrypted = $disk->get((string) $demoBackup->artifact_path);
+                $decrypted = gzdecode(Crypt::decryptString($encrypted));
+
+                return response()->streamDownload(fn () => print ($decrypted), "respaldo-{$safeDb}-{$demoBackup->id}.sql");
+            }
+        } else {
+            $encCandidates = [
+                storage_path('app/backups/'.basename((string) $demoBackup->artifact_path)),
+                storage_path('app/private/demo-backups/'.basename((string) $demoBackup->artifact_path)),
+            ];
+
+            foreach ($encCandidates as $candidate) {
+                if (file_exists($candidate)) {
+                    return response()->download($candidate, "respaldo-cifrado-{$safeDb}-{$demoBackup->id}.enc");
+                }
+            }
+        }
+
+        return redirect()->back()->with('error', 'El archivo solicitado no se encuentra disponible.');
+    }
+
+    public function uploadRestore(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'sql_file' => ['required', 'file', 'max:51200'],
+        ]);
+
+        $file = $request->file('sql_file');
+        $content = file_get_contents($file->getRealPath());
+
+        $host = config('database.connections.mysql.host', '127.0.0.1');
+        $port = config('database.connections.mysql.port', '3306');
+        $database = config('database.connections.mysql.database', 'iesp_continuidad_demo');
+        $username = config('database.connections.mysql.username', 'root');
+        $password = config('database.connections.mysql.password', '');
+
+        try {
+            $pdo = new PDO("mysql:host={$host};port={$port};charset=utf8mb4", $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4',
+            ]);
+            $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$database}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
+            $pdo->exec("USE `{$database}`;");
+            $pdo->exec($content);
+
+            app(ContinuityMetrics::class)->clearCache();
+            app(BackupDemoDatabase::class)->clearCache();
+
+            return redirect()
+                ->back()
+                ->with('backup_status', '¡Archivo SQL subido y restaurado exitosamente en MySQL!');
+        } catch (\Throwable $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Error al restaurar archivo SQL: '.$e->getMessage());
+        }
     }
 }

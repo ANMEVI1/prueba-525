@@ -16,10 +16,19 @@
             <h1 class="text-2xl font-black tracking-tight text-slate-950 mt-1">Padrón de Estudiantes</h1>
         </div>
 
-        <!-- Botón que activa la ventana modal -->
-        <x-ui.button type="button" data-modal-open="#modal-crear-estudiante" variant="primary" icon="plus" size="md">
-            Nuevo Estudiante
-        </x-ui.button>
+        <div class="flex flex-wrap items-center gap-3">
+            <form method="POST" action="{{ route('estudiantes.seed-demo') }}" class="inline">
+                @csrf
+                <x-ui.button type="submit" variant="outline" size="md" icon="database" title="Inserta 20 estudiantes de prueba directamente en la base de datos MySQL">
+                    Cargar 20 Estudiantes Demo
+                </x-ui.button>
+            </form>
+
+            <!-- Botón que activa la ventana modal -->
+            <x-ui.button type="button" data-modal-open="#modal-crear-estudiante" variant="primary" icon="plus" size="md">
+                Nuevo Estudiante
+            </x-ui.button>
+        </div>
     </div>
 
     <!-- Main Card with Filter & Table -->
