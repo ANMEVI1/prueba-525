@@ -100,29 +100,44 @@ class DemoBackupWorkflow
                 throw new RuntimeException('No se pudo guardar el artefacto cifrado en el almacenamiento primario.');
             }
 
-            // Exportar copia directa .sql si está configurado
+            // Exportar copia directa .sql si está configurado en almacenamiento local
             if ($saveFormat === 'direct_sql' || $saveFormat === 'both') {
                 $sqlPath = self::BACKUP_DIRECTORY."/{$subFolder}{$uuid}.{$safeDb}.dump.sql";
                 $disk->put($sqlPath, $sourceContents);
                 $disk->put($sqlPath.'.sha256', hash('sha256', $sourceContents)."  {$uuid}.{$safeDb}.dump.sql\n");
             }
 
-            // Replicar a carpeta personalizada en disco si se configuró un destino fijo externo
-            if (! empty($storageDestination) && ! in_array($storageDestination, ['storage/app/backups', 'backups'], true)) {
-                try {
-                    $customBase = rtrim($storageDestination, '/\\');
-                    $customDir = $customBase.DIRECTORY_SEPARATOR.($folderStructure === 'date_subfolders' ? date('Y-m-d').DIRECTORY_SEPARATOR : '');
-                    if (! is_dir($customDir)) {
-                        @mkdir($customDir, 0755, true);
-                    }
-                    if (is_dir($customDir)) {
-                        @file_put_contents($customDir."{$uuid}.{$safeDb}.backup.enc", $encryptedContents);
-                        if ($saveFormat === 'direct_sql' || $saveFormat === 'both') {
-                            @file_put_contents($customDir."{$uuid}.{$safeDb}.dump.sql", $sourceContents);
-                        }
-                    }
-                } catch (Throwable) {
-                    // Ignora error de unidad externa para preservar el respaldo principal
+            // Guardar físicamente de forma garantizada en la carpeta configurada (storage/app/backups o ruta elegida)
+            $physicalDir = $this->resolvePhysicalDestination($storageDestination, $folderStructure);
+            if (! is_dir($physicalDir)) {
+                @mkdir($physicalDir, 0755, true);
+            }
+
+            if (is_dir($physicalDir)) {
+                $fileBase = rtrim($physicalDir, '\\/').DIRECTORY_SEPARATOR."{$uuid}.{$safeDb}";
+
+                if ($saveFormat === 'encrypted' || $saveFormat === 'both') {
+                    @file_put_contents("{$fileBase}.backup.enc", $encryptedContents);
+                    @file_put_contents("{$fileBase}.backup.enc.sha256", hash('sha256', $encryptedContents)."  {$uuid}.{$safeDb}.backup.enc\n");
+                }
+
+                if ($saveFormat === 'direct_sql' || $saveFormat === 'both') {
+                    @file_put_contents("{$fileBase}.dump.sql", $sourceContents);
+                    @file_put_contents("{$fileBase}.dump.sql.sha256", hash('sha256', $sourceContents)."  {$uuid}.{$safeDb}.dump.sql\n");
+                }
+            }
+
+            // Guardar físicamente la copia espejo en storage/app/backups/secondary
+            $replicateSecondary = (bool) ($scheduleConfig['replicate_secondary'] ?? true);
+            if ($replicateSecondary) {
+                $secondaryPhysicalDir = storage_path('app/backups/secondary');
+                if (! is_dir($secondaryPhysicalDir)) {
+                    @mkdir($secondaryPhysicalDir, 0755, true);
+                }
+                if (is_dir($secondaryPhysicalDir)) {
+                    $secFileBase = rtrim($secondaryPhysicalDir, '\\/').DIRECTORY_SEPARATOR."{$uuid}.{$safeDb}";
+                    @file_put_contents("{$secFileBase}.backup.enc", $encryptedContents);
+                    @file_put_contents("{$secFileBase}.backup.enc.sha256", hash('sha256', $encryptedContents)."  {$uuid}.{$safeDb}.backup.enc\n");
                 }
             }
 
@@ -228,7 +243,18 @@ class DemoBackupWorkflow
             if ($backup->secondary_path && $disk->exists($backup->secondary_path)) {
                 $disk->put($backup->artifact_path, $disk->get($backup->secondary_path));
             } else {
-                throw new RuntimeException('El archivo de respaldo cifrado no se encuentra en el almacenamiento.');
+                // Verificar en almacenamiento físico storage/app/backups o secondary
+                $filename = basename((string) $backup->artifact_path);
+                $physicalPrimary = storage_path('app/backups'.DIRECTORY_SEPARATOR.$filename);
+                $physicalSecondary = storage_path('app/backups'.DIRECTORY_SEPARATOR.'secondary'.DIRECTORY_SEPARATOR.$filename);
+
+                if (file_exists($physicalPrimary)) {
+                    $disk->put($backup->artifact_path, file_get_contents($physicalPrimary));
+                } elseif (file_exists($physicalSecondary)) {
+                    $disk->put($backup->artifact_path, file_get_contents($physicalSecondary));
+                } else {
+                    throw new RuntimeException('El archivo de respaldo cifrado no se encuentra en el almacenamiento.');
+                }
             }
         }
 
@@ -330,6 +356,25 @@ class DemoBackupWorkflow
         if ($integrity !== 'ok' || $foreignKeyViolations !== []) {
             throw new RuntimeException('La base SQLite ficticia no superó la verificación de integridad.');
         }
+    }
+
+    public function resolvePhysicalDestination(?string $destination, string $folderStructure = 'single_folder'): string
+    {
+        $destination = trim((string) $destination);
+
+        if ($destination === '' || in_array($destination, ['storage/app/backups', 'backups'], true)) {
+            $base = storage_path('app/backups');
+        } elseif (preg_match('/^[a-zA-Z]:[\\\\\/]/', $destination) || str_starts_with($destination, '/')) {
+            $base = rtrim($destination, '\\/');
+        } else {
+            $base = rtrim(base_path($destination), '\\/');
+        }
+
+        if ($folderStructure === 'date_subfolders') {
+            return $base.DIRECTORY_SEPARATOR.date('Y-m-d');
+        }
+
+        return $base;
     }
 
     private function elapsedMilliseconds(int $startedAt): int

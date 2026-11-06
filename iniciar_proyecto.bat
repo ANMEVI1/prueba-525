@@ -28,6 +28,12 @@ if exist "D:\xampp\php\php.exe" (
     goto php_found
 )
 
+if exist "C:\xampp2\php\php.exe" (
+    set PHP_BIN=C:\xampp2\php\php.exe
+    set "PATH=C:\xampp2\php;%PATH%"
+    goto php_found
+)
+
 for /d %%D in ("C:\laragon\bin\php\php-*") do (
     if exist "%%D\php.exe" (
         set PHP_BIN=%%D\php.exe
@@ -53,6 +59,41 @@ exit /b 1
 
 :php_found
 echo [OK] Intérprete PHP detectado: %PHP_BIN%
+
+:: 1.5. Verificar existencia de la carpeta 'vendor'
+if not exist "vendor\autoload.php" (
+    echo.
+    echo ===============================================================================
+    echo  [AVISO] No se encontró la carpeta 'vendor' (librerías del framework Laravel).
+    echo ===============================================================================
+    echo  Intentando instalar dependencias con Composer automáticamente...
+    echo.
+    
+    where composer >nul 2>nul
+    if %errorlevel% equ 0 (
+        echo [INFO] Ejecutando: composer install...
+        call composer install --no-interaction --prefer-dist
+    ) else if exist "composer.phar" (
+        echo [INFO] Ejecutando: composer.phar local...
+        "%PHP_BIN%" composer.phar install --no-interaction --prefer-dist
+    ) else if exist "C:\composer\composer.phar" (
+        echo [INFO] Ejecutando: C:\composer\composer.phar...
+        "%PHP_BIN%" "C:\composer\composer.phar" install --no-interaction --prefer-dist
+    )
+    
+    if not exist "vendor\autoload.php" (
+        echo.
+        echo [ERROR] No se pudo encontrar ni generar la carpeta 'vendor'.
+        echo.
+        echo Soluciones rápidas:
+        echo   A) Si tienes el proyecto completo, copia la carpeta 'vendor' dentro de esta carpeta.
+        echo   B) Instala Composer (https://getcomposer.org/) y ejecuta 'composer install'.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK] Librerías de vendor preparadas con éxito.
+)
 
 :: 2. Configurar entorno (.env)
 if not exist ".env" (
@@ -114,4 +155,3 @@ echo Presiona Ctrl+C en esta ventana para detener el servidor web institucional.
 echo.
 "%PHP_BIN%" artisan serve --host=127.0.0.1 --port=8000
 pause
-
